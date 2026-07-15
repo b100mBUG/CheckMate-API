@@ -8,3 +8,5 @@ pydantic[email]
 uvicorn
 reportlab
 pandas
+aiosqlite
+python-dotenv
