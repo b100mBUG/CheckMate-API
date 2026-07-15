@@ -7,7 +7,7 @@ from backend.database.actions.orders import (
 from backend.database.actions.sales import generate_total_sales
 from backend.database.actions.company import get_company_by_id
 from backend.database.actions.products import get_product_by_order
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from datetime import date
 from backend.api.schemas.orders import OrderIn, OrderOut, OrderEdit
 from fastapi.responses import FileResponse
@@ -22,8 +22,9 @@ from reportlab.lib import colors
 from reportlab.lib.units import cm
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 import os
+from backend.security.deps import allow_roles
 
-router = APIRouter()
+router = APIRouter(prefix="/orders")
 
 EXPORT_DIR = "exports"
 os.makedirs(EXPORT_DIR, exist_ok=True)
@@ -33,51 +34,85 @@ logo_path = os.path.join(BASE_DIR, "check.png")
 print("Logo path:", logo_path)
 print("Exists:", os.path.exists(logo_path))
 
-@router.get("/orders-fetch/", response_model=list[OrderOut])
-async def fetch_orders(company_id: int, filter_term: str, filter_dir: str):
-    orders = await show_orders(company_id, filter_term, filter_dir)
+@router.get("/fetch", response_model=list[OrderOut])
+async def fetch_orders(
+    filter_term: str, 
+    filter_dir: str,
+    user = Depends(allow_roles(["admin"]))
+):
+    orders = await show_orders(user.get("sub"), filter_term, filter_dir)
     if not orders:
         raise HTTPException(status_code=404, detail="orders not found")
     return orders
 
-@router.get("/orders-fetch-sales/")
-async def fetch_order_sales(company_id: int, filter: str):
-    orders = await generate_total_sales(company_id, filter)
+@router.get("/sales")
+async def fetch_order_sales(
+    filter: str,
+    user = Depends(allow_roles(["admin"]))
+):
+    orders = await generate_total_sales(user.get("sub"), filter)
     if not orders:
         raise HTTPException(status_code=404, detail="Sales not found")
     return orders
 
-@router.get("/orders-fetch-salesman/", response_model=list[OrderOut])
-async def fetch_orders(salesman_id: int, filter_term: str, filter_dir: str):
-    orders = await get_salesman_specific_orders(salesman_id, filter_term, filter_dir)
+@router.get("/salesman", response_model=list[OrderOut])
+async def fetch_orders( 
+    filter_term: str, 
+    filter_dir: str,
+    salesman_id: int = "",
+    user = Depends(allow_roles(["salesman", "admin"]))
+): 
+    if user.get("role") == "admin":
+        orders = await get_salesman_specific_orders(salesman_id, filter_term, filter_dir)
+    else:
+        orders = await get_salesman_specific_orders(user.get("sub"), filter_term, filter_dir)
     if not orders:
         raise HTTPException(status_code=404, detail="orders not found")
     return orders
 
-@router.get("/orders-search/", response_model=list[OrderOut])
-async def find_orders(company_id: int, search_by: str, search_term: str):
-    orders = await search_orders(company_id, search_by, search_term)
+@router.get("/search", response_model=list[OrderOut])
+async def find_orders(
+    search_by: str, 
+    search_term: str,
+    user = Depends(allow_roles(["admin"]))
+):
+    orders = await search_orders(user.get("sub"), search_by, search_term)
     if not orders:
         raise HTTPException(status_code=404, detail="orders not found")
     return orders
 
-@router.get("/orders-salesman-search/", response_model=list[OrderOut])
-async def find_orders(salesman_id: int, search_by: str, search_term: str):
-    orders = await search_salesman_orders(salesman_id, search_by, search_term)
+@router.get("/salesman-search", response_model=list[OrderOut])
+async def find_orders(
+    search_by: str, 
+    search_term: str,
+    salesman_id: int = "",
+    user = Depends(allow_roles(["admin", "salesman"]))
+):
+    if user.get("role") == "admin":
+        orders = await search_salesman_orders(salesman_id, search_by, search_term)
+    else:
+        orders = await search_salesman_orders(user.get("sub"), search_by, search_term)
     if not orders:
         raise HTTPException(status_code=404, detail="orders not found")
     return orders
 
-@router.get("/orders-date-span-filter/", response_model=list[OrderOut])
-async def filter_orders(company_id: int, start_date: date, end_date: date):
-    orders = await date_span_orders_filter(company_id, start_date, end_date)
+@router.get("/date-span-filter", response_model=list[OrderOut])
+async def filter_orders(
+    start_date: date, 
+    end_date: date,
+    user = Depends(allow_roles(["admin"]))
+):
+    orders = await date_span_orders_filter(user.get("sub"), start_date, end_date)
     if not orders:
         raise HTTPException(status_code=404, detail="Orders not found")
     return orders
 
-@router.get("/orders-export-pdf")
-async def fetch_export_orders_pdf(company_id: int, filter_term: str):
-    orders = await show_orders(company_id, filter_term, "desc")
+@router.get("/pdf")
+async def fetch_export_orders_pdf(
+    filter_term: str,
+    user = Depends(allow_roles(["admin"]))
+):
+    orders = await show_orders(user.get("sub"), filter_term, "desc")
     if not orders:
         raise HTTPException(status_code=404, detail="Order PDF not found")
 
@@ -189,13 +224,16 @@ async def fetch_export_orders_pdf(company_id: int, filter_term: str):
         filename=filename
     )
 
-@router.get("/orders-receipt-pdf/")
-async def fetch_orders_receipt(company_id: int, order_id: int):
+@router.get("/receipt-pdf")
+async def fetch_orders_receipt(
+    order_id: int,
+    user = Depends(allow_roles(["admin"]))
+):
     order = await get_order_by_id(order_id)
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
 
-    company = await get_company_by_id(company_id)
+    company = await get_company_by_id(user.get("sub"))
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     product = await get_product_by_order(company_id, order.order_name)
@@ -294,9 +332,12 @@ async def fetch_orders_receipt(company_id: int, order_id: int):
     )
 
 
-@router.get("/orders-sales-export-pdf")
-async def fetch_export_sales_pdf(company_id: int, filter: str):
-    sales = await generate_total_sales(company_id, filter)
+@router.get("/pdf")
+async def fetch_export_sales_pdf(
+    filter: str,
+    user = Depends(allow_roles(["admin"]))
+):
+    sales = await generate_total_sales(user.get("sub"), filter)
     if not sales:
         raise HTTPException(status_code=404, detail="Order PDF not found")
 
@@ -402,9 +443,12 @@ async def fetch_export_sales_pdf(company_id: int, filter: str):
     )
 
 
-@router.get("/orders-export-csv")
-async def fetch_export_order_csv(company_id: int, filter_term: str):
-    orders = await show_orders(company_id, filter_term, "desc")
+@router.get("/export-csv")
+async def fetch_export_order_csv(
+    filter_term: str,
+    user = Depends(allow_roles(["admin"]))
+):
+    orders = await show_orders(user.get("sub"), filter_term, "desc")
     if not orders:
         raise HTTPException(status_code=404, detail="No orders found")
 
@@ -435,9 +479,12 @@ async def fetch_export_order_csv(company_id: int, filter_term: str):
         filename=filename
     )
 
-@router.get("/orders-sales-export-csv")
-async def fetch_export_sales_csv(company_id: int, filter: str):
-    sales = await generate_total_sales(company_id, filter)
+@router.get("/sales-export-csv")
+async def fetch_export_sales_csv(
+    filter: str,
+    user = Depends(allow_roles(["admin"]))
+):
+    sales = await generate_total_sales(user.get("sub"), filter)
     if not sales:
         raise HTTPException(status_code=404, detail="No orders found")
 
@@ -466,16 +513,23 @@ async def fetch_export_sales_csv(company_id: int, filter: str):
         filename=filename
     )
 
-@router.post("/orders-create/", response_model=OrderOut)
-async def create_order(detail: OrderIn):
+@router.post("/create", response_model=OrderOut)
+async def create_order(
+    detail: OrderIn,
+    user = Depends(allow_roles(["salesman", "admin"]))
+):
     try:
         new_order = await add_order(detail.model_dump())
         return new_order
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"An error occurred: {e}")
 
-@router.put("/order-edit/", response_model=OrderOut)
-async def format_order(order_id: int, detail: OrderEdit):
+@router.put("/edit", response_model=OrderOut)
+async def format_order(
+    order_id: int, 
+    detail: OrderEdit,
+    user = Depends(allow_roles(["admin", "salesman"]))
+):
     try: 
         order = await edit_order(order_id, detail.model_dump())
         if not order: 
@@ -484,8 +538,11 @@ async def format_order(order_id: int, detail: OrderEdit):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"An error occurred: {e}")
 
-@router.put("/order-clear/", response_model=OrderOut)
-async def check_order(order_id: int):
+@router.put("/clear", response_model=OrderOut)
+async def check_order(
+    order_id: int,
+    user = Depends(allow_roles(["admin", "salesman"]))
+):
     try:
         order = await clear_order(order_id)
         if not order:
@@ -494,8 +551,11 @@ async def check_order(order_id: int):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"An error occurred: {e}")
 
-@router.delete("/order-delete/")
-async def remove_order(order_id: int):
+@router.delete("/delete")
+async def remove_order(
+    order_id: int,
+    user = Depends(allow_roles(["admin", "salesman"]))
+):
     try:
         await delete_order(order_id)
         return {"message": "order deleted successfully"}

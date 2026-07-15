@@ -5,7 +5,7 @@ from backend.database.actions.salesman import (
 )
 from backend.database.actions.sales import generate_salesman_sales
 from backend.database.actions.company import get_company_by_id
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from backend.api.schemas.salesman import SalesmanIn, SalesmanLogin, SalesmanOut, SalesmanEdit
 from fastapi.responses import FileResponse
 from datetime import datetime
@@ -19,8 +19,10 @@ from reportlab.lib import colors
 from reportlab.lib.units import cm
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 import os
+from backend.security.jwt_handler import create_access_token
+from backend.security.deps import allow_roles
 
-router = APIRouter()
+router = APIRouter(prefix="/salesman")
 
 EXPORT_DIR = "exports"
 os.makedirs(EXPORT_DIR, exist_ok=True)
@@ -30,30 +32,47 @@ logo_path = os.path.join(BASE_DIR, "check.png")
 print("Logo path:", logo_path)
 print("Exists:", os.path.exists(logo_path))
 
-@router.get("/salesman-fetch/", response_model=list[SalesmanOut])
-async def fetch_salesmen(company_id: int, sort_term: str, sort_dir: str):
-    salesmen = await show_salesmen(company_id, sort_term, sort_dir)
+@router.get("/fetch", response_model=list[SalesmanOut], description="Show all the salesmen for your company. Requires Admin")
+async def fetch_salesmen(
+    sort_term: str, 
+    sort_dir: str,
+    user = Depends(allow_roles(["admin"]))
+):
+    salesmen = await show_salesmen(user.get("sub"), sort_term, sort_dir)
     if not salesmen:
         raise HTTPException(status_code=404, detail="salesmen not found")
     return salesmen
 
-@router.get("/salesman-fetch-sales/")
-async def fetch_salesmen_sales(company_id: int, salesman_id: int, filter):
-    sales = await generate_salesman_sales(company_id, salesman_id, filter)
+@router.get("/sales", description="Fetch all the sales by a given salesman. Requires Admin")
+async def fetch_salesmen_sales(
+    filter,
+    salesman_id: str = "",
+    user = Depends(allow_roles(["salesman", "admin"])),
+):
+    if user.get("role") == "admin":
+        sales = await generate_salesman_sales(user.get("sub"), salesman_id, filter)
+    else:
+        sales = await generate_salesman_sales(user.get("company_id"), user.get("sub"), filter)
     if not sales:
         raise HTTPException(status_code=404, detail="Sales not found")
     return sales
 
-@router.get("/salesman-search/", response_model=list[SalesmanOut])
-async def find_salesmen(company_id: int, search_term: str):
-    salesmen = await search_salesmen(company_id, search_term)
+@router.get("/search", response_model=list[SalesmanOut], description="Search a salesman by their name or contact or email. Requires Admin")
+async def find_salesmen(
+    search_term: str,
+    user = Depends(allow_roles(["admin"]))
+):
+    salesmen = await search_salesmen(user.get("sub"), search_term)
     if not salesmen:
         raise HTTPException(status_code=404, detail="salesmen not found")
     return salesmen
 
-@router.get("/salesman-export-pdf")
-async def fetch_export_product_pdf(company_id: int, filter_term: str):
-    salesmen = await show_salesmen(company_id, filter_term, "desc")
+@router.get("/export-pdf")
+async def fetch_export_product_pdf(
+    filter_term: str,
+    user = Depends(allow_roles(["admin"]))
+):
+    salesmen = await show_salesmen(user.get("sub"), filter_term, "desc")
     if not salesmen:
         raise HTTPException(status_code=404, detail="Order PDF not found")
 
@@ -160,8 +179,11 @@ async def fetch_export_product_pdf(company_id: int, filter_term: str):
 
 
 @router.get("/orders-export-csv")
-async def fetch_export_order_csv(company_id: int, filter_term: str):
-    salesmen = await show_salesmen(company_id, filter_term, "desc")
+async def fetch_export_order_csv(
+    filter_term: str,
+    user = Depends(allow_roles(["admin"]))
+):
+    salesmen = await show_salesmen(user.get("sub"), filter_term, "desc")
     if not salesmen:
         raise HTTPException(status_code=404, detail="No orders found")
 
@@ -190,8 +212,11 @@ async def fetch_export_order_csv(company_id: int, filter_term: str):
         filename=filename
     )
 
-@router.post("/salesman-create/", response_model=SalesmanOut)
-async def create_salesman(detail: SalesmanIn):
+@router.post("/create", response_model=SalesmanOut)
+async def create_salesman(
+    detail: SalesmanIn,
+    user = Depends(allow_roles(["admin"]))
+):
     try:
         new_salesman = await add_salesman(detail.model_dump())
         if not new_salesman:
@@ -200,7 +225,7 @@ async def create_salesman(detail: SalesmanIn):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"An error occurred: {e}")
 
-@router.post("/salesman-login/", response_model=SalesmanOut)
+@router.post("/login", response_model=SalesmanOut)
 async def login_account(detail: SalesmanLogin):
     salesman_detail = {
         'name': detail.salesman_name,
@@ -210,44 +235,73 @@ async def login_account(detail: SalesmanLogin):
         salesman = await signin(salesman_detail)
         if not salesman:
             raise HTTPException(status_code=404, detail="salesman not found")
-        return salesman
+        data = {
+                "sub": str(salesman.company_id),
+                "name": salesman.salesman_name,
+                "email": salesman.salesman_email,
+                "role": "salesman",
+                "contact": salesman.salesman_contact,
+                "target": salesman.salesman_target,
+                "status": salesman.salesman_status
+            }
+
+        access_token = create_access_token(data)
+
+        return {
+            "access_token": access_token,
+            "token_type": "Bearer"
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"An error occurred: {e}")
 
-@router.put("/salesman-activate/")
-async def make_active(company_id: int, salesman_id: int):
+@router.put("/activate")
+async def make_active(
+    salesman_id: int,
+    user = Depends(allow_roles(["admin"]))
+
+):
     try:
-        salesman = await activate_salesman(company_id, salesman_id)
+        salesman = await activate_salesman(user.get("sub"), salesman_id)
         if not salesman:
             raise HTTPException(status_code=404, detail="salesman not found")
         return salesman
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"An error occurred: {e}")
 
-@router.put("/salesman-deactivate/")
-async def make_inactive(company_id: int, salesman_id: int):
+@router.put("/deactivate")
+async def make_inactive(
+    salesman_id: int,
+    user = Depends(allow_roles(["admin"]))
+):
     try:
-        salesman = await deactivate_salesman(company_id, salesman_id)
+        salesman = await deactivate_salesman(user.get("sub"), salesman_id)
         if not salesman:
             raise HTTPException(status_code=404, detail="salesman not found")
         return salesman
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"An error occurred: {e}")
 
-@router.put("/salesman-edit/", response_model=SalesmanOut)
-async def format_salesman(company_id: int, salesman_id: int, detail: SalesmanEdit):
+@router.put("/edit", response_model=SalesmanOut)
+async def format_salesman(
+    salesman_id: int, 
+    detail: SalesmanEdit,
+    user = Depends(allow_roles(["admin"]))
+):
     try:
-        salesman = await edit_salesman(company_id, salesman_id, detail.model_dump())
+        salesman = await edit_salesman(user.get("sub"), salesman_id, detail.model_dump())
         if not salesman:
             raise HTTPException(status_code=404, detail="salesman not found")
         return salesman
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"An error occurred: {e}")
 
-@router.delete("/salesman-delete/")
-async def remove_salesman(company_id: int, salesman_id: int):
+@router.delete("/delete")
+async def remove_salesman(
+    salesman_id: int,
+    user = Depends(allow_roles(["admin"]))
+):
     try:
-        await delete_salesman(company_id, salesman_id)
+        await delete_salesman(user.get("sub"), salesman_id)
         return {"message": "salesman deleted successfully"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"An error occurred: {e}")

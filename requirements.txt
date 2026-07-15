@@ -10,3 +10,4 @@ reportlab
 pandas
 aiosqlite
 python-dotenv
+python-jose

@@ -3,11 +3,11 @@ from backend.database.actions.products import (
    show_products, search_products
 )
 from backend.database.actions.company import get_company_by_id
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from backend.api.schemas.products import ProductIn, ProductOut, ProductEdit
 from fastapi.responses import FileResponse
 from datetime import datetime
-import csv # The best music lol....
+import csv 
 from reportlab.platypus import (
     SimpleDocTemplate, Table, TableStyle, 
     Paragraph, Spacer, Image,
@@ -16,8 +16,9 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 import os
+from backend.security.deps import allow_roles
 
-router = APIRouter()
+router = APIRouter(prefix="/products")
 
 EXPORT_DIR = "exports"
 os.makedirs(EXPORT_DIR, exist_ok=True)
@@ -27,23 +28,39 @@ logo_path = os.path.join(BASE_DIR, "check.png")
 print("Logo path:", logo_path)
 print("Exists:", os.path.exists(logo_path))
 
-@router.get("/products-fetch/", response_model=list[ProductOut])
-async def fetch_products(company_id: int, filter_term: str, filter_dir: str):
-    products = await show_products(company_id, filter_term, filter_dir)
+@router.get("/fetch", response_model=list[ProductOut])
+async def fetch_products(
+    filter_term: str, 
+    filter_dir: str,
+    user = Depends(allow_roles(["admin", "salesman"]))
+):
+    if user.get("role") == "admin":
+        products = await show_products(user.get("sub"), filter_term, filter_dir)
+    else:
+        products = await show_products(user.get("company_id"), filter_term, filter_dir)
     if not products:
         raise HTTPException(status_code=404, detail="Products not found")
     return products
 
 @router.get("/products-search/", response_model=list[ProductOut])
-async def find_products(company_id: int, search_term: str):
-    products = await search_products(company_id, search_term)
+async def find_products(
+    search_term: str,
+    user = Depends(allow_roles(["admin", "salesman"]))
+):  
+    if user.get("role") == "admin":
+        products = await search_products(user.get("sub"), search_term)
+    else:
+        products  = await search_products(user.get("company_id"), search_term)
     if not products:
         raise HTTPException(status_code=404, detail="Products not found")
     return products
 
-@router.get("/products-export-pdf")
-async def fetch_export_product_pdf(company_id: int, filter_term: str):
-    products = await show_products(company_id, filter_term, "desc")
+@router.get("/pdf")
+async def fetch_export_product_pdf(
+    filter_term: str,
+    user = Depends(allow_roles(["admin"]))
+):
+    products = await show_products(user.get("sub"), filter_term, "desc")
     if not products:
         raise HTTPException(status_code=404, detail="Product PDF not found")
     company = await get_company_by_id(company_id)
@@ -127,9 +144,12 @@ async def fetch_export_product_pdf(company_id: int, filter_term: str):
         filename=filename
     )
 
-@router.get("/products-export-csv")
-async def fetch_export_product_csv(company_id: int, filter_term: str):
-    products = await show_products(company_id, filter_term, "desc")
+@router.get("/csv")
+async def fetch_export_product_csv(
+    filter_term: str,
+    user = Depends(allow_roles(["admin"]))
+):
+    products = await show_products(user.get("sub"), filter_term, "desc")
     if not products:
         raise HTTPException(status_code=404, detail="No products found")
 
@@ -162,8 +182,11 @@ async def fetch_export_product_csv(company_id: int, filter_term: str):
         filename=filename
     )
 
-@router.post("/products-add/", response_model=ProductOut)
-async def append_product(product_detail: ProductIn):
+@router.post("/add/", response_model=ProductOut)
+async def append_product(
+    product_detail: ProductIn,
+    user = Depends(allow_roles(["admin"]))
+):
     try:
         product = await add_product(product_detail.model_dump())
         if not product:
@@ -172,19 +195,26 @@ async def append_product(product_detail: ProductIn):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"An error occurred: {e}")
 
-@router.put("/products-edit", response_model=ProductOut)
-async def format_product(company_id: int, product_id: int, product_detail: ProductEdit):
+@router.put("/edit", response_model=ProductOut)
+async def format_product(
+    product_id: int, 
+    product_detail: ProductEdit,
+    user = Depends(allow_roles(["admin"]))
+):
     try:
-        product = await edit_products(company_id, product_id, product_detail.model_dump())
+        product = await edit_products(user.get("sub"), product_id, product_detail.model_dump())
         if not product:
             raise HTTPException(status_code=400, detail="Could not edit product")
         return product
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"An error occurred: {e}")
 
-@router.delete("/products-delete")
-async def remove_product(company_id: int, product_id: int):
+@router.delete("/delete")
+async def remove_product(
+    product_id: int,
+    user = Depends(allow_roles(["admin"]))
+):
     try:
-        await delete_product(company_id, product_id)
+        await delete_product(user.get("sub"), product_id)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"An error occurred: {e}")

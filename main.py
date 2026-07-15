@@ -13,9 +13,8 @@ app = FastAPI(
     version="1.0.1"
 )
 
-app.include_router(company_router, prefix="/companies", tags=["companies"])
-app.include_router(account_router, prefix="/accounts", tags=["accounts"])
-app.include_router(order_router, prefix="/orders", tags=["orders"])
-app.include_router(salesman_router, prefix="/salesman", tags=["salesman"])
-app.include_router(product_router, prefix="/products", tags=["products"])
-
+app.include_router(company_router, tags=["companies"])
+app.include_router(account_router, tags=["accounts"])
+app.include_router(order_router, tags=["orders"])
+app.include_router(salesman_router, tags=["salesman"])
+app.include_router(product_router, tags=["products"])

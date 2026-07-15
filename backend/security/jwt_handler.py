@@ -2,6 +2,7 @@ from jose import jwt, JWTError, ExpiredSignatureError
 from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
 from fastapi import HTTPException, status
+import os
 
 load_dotenv(".env")
 
@@ -11,7 +12,7 @@ ACCESS_KEY_EXPIRE_MINUTES = int(os.getenv("ACCESS_KEY_EXPIRE_MINUTES", 0))
 ALGORITHM = os.getenv("ALGORITHM", "")
 
 
-def create_access_token(data: dict, expire_delta: timedelta = 15) -> str:
+def create_access_token(data: dict) -> str:
     now = datetime.now(timezone.utc)
     to_encode = data.copy()
 
@@ -20,7 +21,7 @@ def create_access_token(data: dict, expire_delta: timedelta = 15) -> str:
     to_encode.update(
         {
             "iat":iat,
-            "exp": expire_delta or (now + timedelta(minutes=15))
+            "exp": (now + timedelta(minutes=ACCESS_KEY_EXPIRE_MINUTES))
         }
     )
     try:
@@ -38,6 +39,7 @@ def create_access_token(data: dict, expire_delta: timedelta = 15) -> str:
     return token
 
 def verify_access_token(token: str) -> dict:
+    print("About to verify token: ", token)
     try:
         payload = jwt.decode(
             token, 
@@ -49,8 +51,10 @@ def verify_access_token(token: str) -> dict:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail= "The provided access token has expired"
         )
-    except JWTError:
-        raise HTTPException("Unable to verify the access token")
+    except JWTError as e:
+        raise e
+        """raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Unable to verify the access token")"""
     
     return payload
 
