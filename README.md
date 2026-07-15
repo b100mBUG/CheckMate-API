@@ -32,11 +32,11 @@ Full interactive docs are at the live link above.
 ## Running locally
 
 ```bash
-git clone https://github.com/b100mBUG/checkmate.git
-cd checkmate
+git clone https://github.com/b100mBUG/CheckMate-API.git
+cd CheckMate-API
 pip install -r requirements.txt
 cp .env.example .env
-# fill in DATABASE_URL and SECRET_KEY
+# fill in DATABASE_URL
 uvicorn main:app --reload
 ```
 
@@ -45,7 +45,6 @@ uvicorn main:app --reload
 | Variable | Description |
 |----------|--------------|
 | `DATABASE_URL` | PostgreSQL connection string (Neon) |
-| `SECRET_KEY` | JWT signing secret |
 
 ## Author
 
