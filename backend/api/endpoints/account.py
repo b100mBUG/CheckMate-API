@@ -1,6 +1,7 @@
 from backend.database.actions.account import delete_account, create_account, edit_account, show_accounts, search_accounts, signin
 from fastapi import APIRouter, HTTPException
 from backend.api.schemas.account import AccountIn, AccountLogin, AccountOut, AccountEdit
+from backend.security import jwt_handler
 
 router = APIRouter()
 
