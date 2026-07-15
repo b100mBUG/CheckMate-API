@@ -1,31 +1,20 @@
 # CheckMate API
 
-A backend for remote sales data collection. Companies register their teams, assign products, and send salesmen to the field — where they capture real sales details in real time, complete with automatic geolocation tagging.
+Backend for remote sales team tracking. Companies register, add their sales team and product catalogue, then send salesmen into the field. Every sale gets logged in real time with the salesman's location tagged automatically.
 
-Built with **FastAPI**, deployed live on **Render**, and powered by **PostgreSQL on Neon**.
+Built with FastAPI, deployed on Render, backed by PostgreSQL on Neon.
 
-📖 **Live API Docs:** [https://checkmate-lvnc.onrender.com/docs](https://checkmate-lvnc.onrender.com/docs)
+Live API docs: https://checkmate-lvnc.onrender.com/docs
 
----
+## What it does
 
-## Features
+A company signs up and gets its own isolated space for its sales operation. From there they add salesmen, define what those salesmen are selling, and get a live feed of field sales as they happen, each one timestamped and geotagged to where the sale was made. Company admins and salesmen authenticate separately through the same JWT-secured API.
 
-- **Company accounts** — companies register and manage their entire sales operation from one place
-- **Salesman management** — add and manage your field sales team
-- **Product catalogue** — define the products your team sells
-- **Field sales capture** — salesmen log sale details directly from the field
-- **Automatic geolocation** — every sales record is automatically tagged with the salesman's location at the time of capture
-- **JWT authentication** — secured endpoints for both company admins and salesmen
+## Stack
 
----
+FastAPI, PostgreSQL, SQLAlchemy, JWT auth, rate limiting, pagination. Deployed on Render with Neon for the database.
 
-## Tech Stack
-
-FastAPI · PostgreSQL · SQLAlchemy · Geolocation · JWT · Rate Limiting · Pagination · Render · Neon DB
-
----
-
-## API Overview
+## API overview
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -34,43 +23,30 @@ FastAPI · PostgreSQL · SQLAlchemy · Geolocation · JWT · Rate Limiting · Pa
 | POST | `/salesmen` | Add a salesman to your team |
 | GET | `/salesmen` | List all salesmen in your company |
 | POST | `/products` | Add a product to your catalogue |
-| POST | `/sales` | Capture a field sale (auto-tags location) |
+| POST | `/sales` | Capture a field sale, auto-tags location |
 | GET | `/sales` | View all captured sales records |
 | GET | `/sales/{salesman_id}` | View sales by a specific salesman |
 
-> Full interactive documentation available at the live docs link above.
+Full interactive docs are at the live link above.
 
----
-
-## Running Locally
+## Running locally
 
 ```bash
-# Clone the repo
 git clone https://github.com/b100mBUG/checkmate.git
 cd checkmate
-
-# Install dependencies
 pip install -r requirements.txt
-
-# Set up environment variables
 cp .env.example .env
-# Fill in: DATABASE_URL, SECRET_KEY
-
-# Run the server
+# fill in DATABASE_URL and SECRET_KEY
 uvicorn main:app --reload
 ```
 
----
-
-## Environment Variables
+## Environment variables
 
 | Variable | Description |
-|----------|-------------|
+|----------|--------------|
 | `DATABASE_URL` | PostgreSQL connection string (Neon) |
 | `SECRET_KEY` | JWT signing secret |
 
----
-
 ## Author
 
-**Were Fidel Castro** — [github.com/b100mBUG](https://github.com/b100mBUG) · [Portfolio](https://werefidelcastro.onrender.com)
+Were Fidel Castro. [GitHub](https://github.com/b100mBUG). [Portfolio](https://werefidelcastro.onrender.com).
